@@ -731,6 +731,231 @@ class TestPooling(TestCase):
 
         self.assertEqual(y.shape, m.evaluate_output_shape(x.shape))
 
+
+    def test_norm_max_pool_2d(self):
+        gs = rot2dOnR2()
+        G = gs.fibergroup
+
+        # Contiguous and non-contiguous representations
+        rho = [G.irrep(0), G.irrep(1), G.irrep(0)]
+        in_type = FieldType(gs, rho)
+
+        pool = NormMaxPool2D(in_type, kernel_size=2, stride=2)
+    
+        # Shape: (2, 4, 4, 4)
+        x = torch.Tensor([
+            [[[1, 0, 0, 0],
+              [0, 1, 2, 1],
+              [1, 0, 1, 0],
+              [0, 0, 2, 3]],
+
+             [[0, 1, 2, 1],
+              [1, 1, 3, 0],
+              [2, 2, 1, 0],
+              [0, 2, 0, 0]],
+
+             [[1, 3, 2, 1],
+              [1, 1, 3, 4],
+              [0, 1, 1, 0],
+              [0, 1, 0, 0]],
+
+             [[1, 3, 0, 3],
+              [0, 0, 0, 1],
+              [0, 0, 0, 2],
+              [0, 2, 0, 1]]],
+
+
+            [[[1, 3, 1, 0],
+              [1, 1, 1, 0],
+              [1, 1, 1, 1],
+              [0, 4, 3, 3]],
+
+             [[0, 0, 1, 0],
+              [1, 0, 2, 1],
+              [0, 1, 4, 2],
+              [0, 0, 0, 0]],
+
+             [[0, 0, 2, 0],
+              [2, 2, 2, 0],
+              [1, 1, 0, 2],
+              [1, 1, 0, 2]],
+
+             [[3, 1, 0, 3],
+              [3, 3, 1, 0],
+              [2, 0, 2, 1],
+              [0, 0, 2, 2]]],
+        ])
+        x = GeometricTensor(x, in_type)
+
+        y = pool(x)
+
+        # Manually verified.
+        y_expected = torch.Tensor([
+            [[[1, 2],
+              [1, 3]],
+
+             [[1, 3],
+              [2, 1]],
+
+             [[3, 3],
+              [1, 1]],
+
+             [[3, 3],
+              [2, 2]]],
+
+
+            [[[3, 1],
+              [4, 3]],
+
+             [[1, 2],
+              [1, 4]],
+
+             [[2, 2],
+              [1, 0]],
+
+             [[3, 3],
+              [2, 2]]],
+        ])
+
+        torch.testing.assert_close(y.tensor, y_expected)
+
+        self.assertEqual(y.shape, pool.evaluate_output_shape(x.shape))
+
+    def test_norm_max_pool_3d(self):
+        gs = rot3dOnR3()
+        G = gs.fibergroup
+
+        # The `norm_max_pool_2d` test covers the contiguous/non-contiguous 
+        # representation case, and the multiple training example case.  This 
+        # test has a lot more numbers, just by virtue of being 3D, so we'll 
+        # limit ourselves to 1 training example and 2 irreps.
+        rho = [G.irrep(0), G.irrep(1)]
+        in_type = FieldType(gs, rho)
+        
+        pool = NormMaxPool3D(in_type, kernel_size=2, stride=2)
+    
+        # Shape: (1, 4, 4, 4, 4)
+        x = torch.Tensor([
+            [[[[1, 2, 0, 1],
+               [1, 1, 1, 0],
+               [2, 2, 2, 0],
+               [2, 1, 1, 2]],
+     
+              [[1, 0, 1, 0],
+               [2, 0, 0, 0],
+               [2, 0, 1, 0],
+               [3, 0, 2, 0]],
+     
+              [[1, 0, 0, 1],
+               [0, 0, 0, 1],
+               [0, 2, 2, 1],
+               [1, 0, 2, 2]],
+     
+              [[0, 0, 1, 1],
+               [1, 0, 1, 1],
+               [1, 1, 2, 1],
+               [0, 1, 1, 0]]],
+     
+     
+             [[[2, 1, 2, 2],
+               [2, 1, 0, 1],
+               [0, 1, 1, 3],
+               [1, 3, 3, 1]],
+     
+              [[0, 2, 0, 0],
+               [0, 3, 1, 0],
+               [1, 0, 0, 2],
+               [1, 0, 2, 2]],
+     
+              [[0, 3, 0, 2],
+               [1, 0, 2, 1],
+               [1, 2, 2, 0],
+               [1, 0, 0, 1]],
+     
+              [[0, 0, 1, 3],
+               [0, 2, 1, 1],
+               [2, 2, 0, 1],
+               [1, 0, 1, 3]]],
+     
+     
+             [[[1, 0, 1, 0],
+               [1, 2, 2, 1],
+               [1, 1, 0, 1],
+               [0, 2, 0, 1]],
+     
+              [[2, 3, 0, 2],
+               [3, 1, 0, 0],
+               [1, 0, 2, 1],
+               [2, 2, 0, 0]],
+     
+              [[1, 0, 0, 0],
+               [0, 2, 0, 1],
+               [1, 1, 1, 3],
+               [0, 0, 2, 0]],
+     
+              [[1, 1, 2, 2],
+               [0, 0, 1, 1],
+               [0, 1, 2, 2],
+               [1, 1, 1, 2]]],
+     
+     
+             [[[1, 0, 0, 2],
+               [1, 2, 0, 0],
+               [0, 0, 1, 1],
+               [0, 1, 0, 0]],
+
+              [[3, 1, 1, 1],
+               [0, 0, 1, 1],
+               [0, 3, 1, 2],
+               [0, 1, 1, 1]],
+     
+              [[0, 1, 0, 2],
+               [1, 1, 3, 1],
+               [2, 1, 0, 0],
+               [1, 0, 0, 0]],
+     
+              [[2, 0, 2, 2],
+               [0, 1, 1, 0],
+               [0, 1, 0, 1],
+               [2, 1, 2, 1]]]],
+        ])
+        x = GeometricTensor(x, in_type)
+
+        y = pool(x)
+
+        # Manually verified.
+        y_expected = torch.Tensor([[
+            [[[2, 1],
+              [3, 2]],
+
+             [[1, 1],
+              [2, 2]]],
+
+            [[[2, 2],
+              [3, 3]],
+
+             [[3, 3],
+              [1, 3]]],
+
+
+            [[[3, 0],
+              [2, 1]],
+
+             [[0, 2],
+              [1, 2]]],
+
+            [[[1, 2],
+              [1, 1]],
+
+             [[1, 2],
+              [2, 1]]],
+        ]])
+
+        torch.testing.assert_close(y.tensor, y_expected)
+
+        self.assertEqual(y.shape, pool.evaluate_output_shape(x.shape))
+
+
     def test_output_shape_2d(self):
         # The main purpose of this function is to make sure that all of the 
         # arguments to the pooling module have the expected effect, i.e. they 
@@ -898,6 +1123,74 @@ class TestPooling(TestCase):
                     in_shape=(2, 1, 4, 4),
                     out_shape=(2, 1, 2, 2),
                 ),
+
+                # Norm max pooling:
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=3,
+                        stride=2,
+                    ),
+                    in_shape=(2, 1, 5, 5),
+                    out_shape=(2, 1, 2, 2),
+                ),
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=5,
+                        stride=2,
+                    ),
+                    in_shape=(2, 1, 7, 7),
+                    out_shape=(2, 1, 2, 2),
+                ),
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=3,
+                        stride=1,
+                    ),
+                    in_shape=(2, 1, 4, 4),
+                    out_shape=(2, 1, 2, 2),
+                ),
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=3,
+                        stride=None,  # Means same as kernel size
+                    ),
+                    in_shape=(2, 1, 6, 6),
+                    out_shape=(2, 1, 2, 2),
+                ),
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=3,
+                        stride=2,
+                        padding=1,
+                    ),
+                    in_shape=(2, 1, 3, 3),
+                    out_shape=(2, 1, 2, 2),
+                ),
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=3,
+                        stride=2,
+                        dilation=2,
+                    ),
+                    in_shape=(2, 1, 7, 7),
+                    out_shape=(2, 1, 2, 2),
+                ),
+                dict(
+                    module=NormMaxPool2D(
+                        ft,
+                        kernel_size=3,
+                        stride=2,
+                        ceil_mode=True,
+                    ),
+                    in_shape=(2, 1, 4, 4),
+                    out_shape=(2, 1, 2, 2),
+                ),
         ]
 
         for case in cases:
@@ -911,9 +1204,9 @@ class TestPooling(TestCase):
                 self.assertEqual(y.shape, f.evaluate_output_shape(x.shape))
 
 
-    def test_gaussian_blur(self):
-        # Checking to make sure that layers and training examples are all 
-        # completely independent from each other.
+    def test_gaussian_blur_channels(self):
+        # Checking to make sure that each channel (and each training example) 
+        # is completely independent from all the others.
         x = torch.Tensor([
             [[[1, 1, 1],
               [1, 1, 1],

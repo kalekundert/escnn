@@ -1,4 +1,7 @@
-from .norm_max import NormMaxPool
+from .norm_max import (
+        NormMaxPool2D, NormMaxPool,
+        NormMaxPool3D,
+)
 
 from .pointwise_max import (
         PointwiseMaxPool2D, PointwiseMaxPool,
@@ -22,7 +25,8 @@ from .pointwise_avg import (
 )
 
 __all__ = [
-    "NormMaxPool",
+    "NormMaxPool2D", "NormMaxPool",
+    "NormMaxPool3D",
     "PointwiseMaxPool2D", "PointwiseMaxPool",
     "PointwiseMaxPool3D",
     "PointwiseMaxPoolAntialiased2D", "PointwiseMaxPoolAntialiased",

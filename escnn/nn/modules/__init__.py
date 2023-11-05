@@ -43,7 +43,8 @@ from .nonlinearities import TensorProductModule
 
 from .reshuffle_module import ReshuffleModule
 
-from .pooling import NormMaxPool
+from .pooling import NormMaxPool2D, NormMaxPool
+from .pooling import NormMaxPool3D
 from .pooling import PointwiseMaxPool2D, PointwiseMaxPool
 from .pooling import PointwiseMaxPoolAntialiased2D, PointwiseMaxPoolAntialiased
 from .pooling import PointwiseMaxPool3D
@@ -117,7 +118,8 @@ __all__ = [
     "QuotientFourierELU",
     "TensorProductModule",
     "ReshuffleModule",
-    "NormMaxPool",
+    "NormMaxPool2D", "NormMaxPool",
+    "NormMaxPool3D",
     "PointwiseMaxPool2D", "PointwiseMaxPool",
     "PointwiseMaxPool3D",
     "PointwiseMaxPoolAntialiased2D", "PointwiseMaxPoolAntialiased",

@@ -1,28 +1,30 @@
 
-from collections import defaultdict
-
-from torch.nn import Parameter
-
-from escnn.gspaces import *
 from escnn.nn import FieldType
 from escnn.nn import GeometricTensor
 
 from ..equivariant_module import EquivariantModule
+from .utils import calc_pool_output_shape, check_dimensions, get_nd_tuple
 
 import torch
 import torch.nn.functional as F
 
 from typing import List, Tuple, Any, Union
 
-import math
+from math import prod
 
 
 __all__ = ["NormMaxPool"]
 
+_MAX_POOLS = {
+        2: F.max_pool2d,
+        3: F.max_pool3d,
+}
 
-class NormMaxPool(EquivariantModule):
+class _NormMaxPoolND(EquivariantModule):
     
     def __init__(self,
+                 *,
+                 d: int,
                  in_type: FieldType,
                  kernel_size: Union[int, Tuple[int, int]],
                  stride: Union[int, Tuple[int, int]] = None,
@@ -51,79 +53,48 @@ class NormMaxPool(EquivariantModule):
             
         """
 
-        assert isinstance(in_type.gspace, GSpace)
-        assert in_type.gspace.dimensionality == 2
+        super().__init__()
 
-        super(NormMaxPool, self).__init__()
+        check_dimensions(in_type, d)
 
+        self.d = d
         self.space = in_type.gspace
         self.in_type = in_type
         self.out_type = in_type
 
-        if isinstance(kernel_size, int):
-            self.kernel_size = (kernel_size, kernel_size)
-        else:
-            self.kernel_size = kernel_size
-        
-        if isinstance(stride, int):
-            self.stride = (stride, stride)
-        elif stride is None:
-            self.stride = self.kernel_size
-        else:
-            self.stride = stride
-        
-        if isinstance(padding, int):
-            self.padding = (padding, padding)
-        else:
-            self.padding = padding
-        
-        if isinstance(dilation, int):
-            self.dilation = (dilation, dilation)
-        else:
-            self.dilation = dilation
-            
+        self.kernel_size = get_nd_tuple(kernel_size, d)
+        self.stride = get_nd_tuple(stride if stride is not None else kernel_size, d)
+        self.padding = get_nd_tuple(padding, d)
+        self.dilation = get_nd_tuple(dilation, d)
         self.ceil_mode = ceil_mode
         
-        self._nfields = None
+        # For each representation size, an "index" which will select all 
+        # channels belonging to said representations.  Each "index" could 
+        # either by a list of (integer) index numbers, or a slice.
+        self._indices = {}
         
-        # group fields by their size and
-        #   - check if fields of the same size are contiguous
-        #   - retrieve the indices of the fields
+        # For each representation size, whether all the representations of that 
+        # size are located immediately adjacent to each other.
+        _contiguous = {}
 
-        # number of fields of each size
-        self._nfields = defaultdict(int)
-        
-        # indices of the channales corresponding to fields belonging to each group
-        _indices = defaultdict(lambda: [])
-        
-        # whether each group of fields is contiguous or not
-        self._contiguous = {}
-        
-        position = 0
+        last_stop = 0
         last_size = None
-        for i, r in enumerate(self.in_type.representations):
-            
+
+        for r in self.in_type.representations:
             if r.size != last_size:
-                if not r.size in self._contiguous:
-                    self._contiguous[r.size] = True
-                else:
-                    self._contiguous[r.size] = False
-            last_size = r.size
-            
-            _indices[r.size] += list(range(position, position + r.size))
-            self._nfields[r.size] += 1
-            position += r.size
+                _contiguous[r.size] = r.size not in _contiguous
         
-        for s, contiguous in self._contiguous.items():
-            if contiguous:
-                # for contiguous fields, only the first and last indices are kept
-                _indices[s] = torch.LongTensor([min(_indices[s]), max(_indices[s])+1])
-            else:
-                # otherwise, transform the list of indices into a tensor
-                _indices[s] = torch.LongTensor(_indices[s])
-                
-            # register the indices tensors as parameters of this module
-            self.register_buffer('indices_{}'.format(s), _indices[s])
+            start, stop = last_stop, last_stop + r.size
+            self._indices.setdefault(r.size, []).extend(range(start, stop))
+
+            last_size = r.size
+            last_stop = stop
+
+        # Use slices for contiguous fields.  Presumably this is a bit more 
+        # efficient?
+        for k, indices in self._indices.items():
+            if _contiguous[k]:
+                self._indices[k] = slice(min(indices), max(indices) + 1)
         
     def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
@@ -140,99 +111,103 @@ class NormMaxPool(EquivariantModule):
         
         assert input.type == self.in_type
         
-        b, c, hi, wi = input.tensor.shape
+        b, c, *xyzi = input.tensor.shape
         
-        # compute the output shape (see 'torch.nn.MaxPool2D')
-        b, c, ho, wo = self.evaluate_output_shape(input.tensor.shape)
+        assert len(xyzi) == self.d
         
+        b, c, *xyzo = self.evaluate_output_shape(input.tensor.shape)
+
         # compute the squares of the values of each channel
-        # n = torch.mul(input.data, input.data)
-        n = input.tensor ** 2
+        input_squared = input.tensor ** 2
         
         # pre-allocate the output tensor
-        output = torch.empty(b, c, ho, wo, device=input.tensor.device)
+        output = torch.empty(b, c, *xyzo, device=input.tensor.device)
         
         # reshape the input to merge the spatial dimensions
         input = input.tensor.reshape(b, c, -1)
         
         # iterate through all field sizes
-        for s, contiguous in self._contiguous.items():
-            indices = getattr(self, f"indices_{s}")
-            
-            if contiguous:
-                # if the fields were contiguous, we can use slicing
-                
-                # compute the norms
-                norms = n[:, indices[0]:indices[1], :, :]\
-                        .view(b, -1, s, hi, wi)\
-                        .sum(dim=2)\
-                        .sqrt()
-                
-                # run max-pooling on the norms-tensor
-                _, indx = F.max_pool2d(norms,
-                                       self.kernel_size,
-                                       self.stride,
-                                       self.padding,
-                                       self.dilation,
-                                       self.ceil_mode,
-                                       return_indices=True)
-                
-                # in order to use the pooling indices computed for the norms to retrieve the fields, they need to be
-                # expanded in the inner field dimension
-                indx = indx.view(b, -1, 1, ho * wo).expand(-1, -1, s, -1)
-                
-                # retrieve the fields from the input tensor using the pooling indeces
-                output[:, indices[0]:indices[1], :, :] = input[:, indices[0]:indices[1], :]\
-                                                              .view(b, -1, s, hi*wi)\
-                                                              .gather(3, indx)\
-                                                              .view(b, -1, ho, wo)
-                
-            else:
-                # otherwise we have to use indexing
-                
-                # compute the norms
-                norms = n[:, indices, :, :] \
-                    .view(b, -1, s, hi, wi) \
-                    .sum(dim=2) \
-                    .sqrt()
-                
-                # run max-pooling on the norms-tensor
-                _, indx = F.max_pool2d(norms,
-                                       self.kernel_size,
-                                       self.stride,
-                                       self.padding,
-                                       self.dilation,
-                                       self.ceil_mode,
-                                       return_indices=True)
-                
-                # in order to use the pooling indices computed for the norms to retrieve the fields, they need to be
-                # expanded in the inner field dimension
-                indx = indx.view(b, -1, 1, ho * wo).expand(-1, -1, s, -1)
+        for s, indices in self._indices.items():
 
-                # retrieve the fields from the input tensor using the pooling indeces
-                output[:, indices, :, :] = input[:, indices, :] \
-                    .view(b, -1, s, hi * wi) \
-                    .gather(3, indx) \
-                    .view(b, -1, ho, wo)
+            # compute the norms
+            norms = input_squared[:, indices, :, :] \
+                .view(b, -1, s, *xyzi) \
+                .sum(dim=2)
+            
+            # run max-pooling on the norms-tensor
+            _, indx = _MAX_POOLS[self.d](
+                    norms,
+                    self.kernel_size,
+                    self.stride,
+                    self.padding,
+                    self.dilation,
+                    self.ceil_mode,
+                    return_indices=True,
+            )
+            
+            # in order to use the pooling indices computed for the norms to retrieve the fields, they need to be
+            # expanded in the inner field dimension
+            indx = indx.view(b, -1, 1, prod(xyzo)).expand(-1, -1, s, -1)
+
+            # retrieve the fields from the input tensor using the pooling indeces
+            output[:, indices, :, :] = input[:, indices, :] \
+                .view(b, -1, s, prod(xyzi)) \
+                .gather(3, indx) \
+                .view(b, -1, *xyzo)
         
         # wrap the result in a GeometricTensor
         return GeometricTensor(output, self.out_type, coords=None)
 
     def evaluate_output_shape(self, input_shape: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
-        assert len(input_shape) == 4
-        assert input_shape[1] == self.in_type.size
-
-        b, c, hi, wi = input_shape
-
-        # compute the output shape (see 'torch.nn.MaxPool2D')
-        ho = math.floor(
-            (hi + 2 * self.padding[0] - self.dilation[0] * (self.kernel_size[0] - 1) - 1) / self.stride[0] + 1)
-        wo = math.floor(
-            (wi + 2 * self.padding[1] - self.dilation[1] * (self.kernel_size[1] - 1) - 1) / self.stride[1] + 1)
-
-        return b, self.out_type.size, ho, wo
+        return calc_pool_output_shape(self.d, self, input_shape, self.out_type)
         
     def check_equivariance(self, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
-    
-        # this kind of pooling is not really equivariant so we can not test equivariance
+        # this kind of pooling is not really equivariant so we can not test 
+        # equivariance
         pass
+
+
+class NormMaxPool2D(_NormMaxPoolND):
+    
+    def __init__(
+            self,
+            in_type: FieldType,
+            kernel_size: Union[int, Tuple[int, int]],
+            stride: Union[int, Tuple[int, int]] = None,
+            padding: Union[int, Tuple[int, int]] = 0,
+            dilation: Union[int, Tuple[int, int]] = 1,
+            ceil_mode: bool = False
+    ):
+        super().__init__(
+                d=2,
+                in_type=in_type,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+                ceil_mode=ceil_mode,
+        )
+
+class NormMaxPool3D(_NormMaxPoolND):
+    
+    def __init__(
+            self,
+            in_type: FieldType,
+            kernel_size: Union[int, Tuple[int, int]],
+            stride: Union[int, Tuple[int, int]] = None,
+            padding: Union[int, Tuple[int, int]] = 0,
+            dilation: Union[int, Tuple[int, int]] = 1,
+            ceil_mode: bool = False
+    ):
+        super().__init__(
+                d=3,
+                in_type=in_type,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+                ceil_mode=ceil_mode,
+        )
+
+# for backward compatibility
+NormMaxPool = NormMaxPool2D

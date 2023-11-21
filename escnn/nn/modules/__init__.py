@@ -23,6 +23,8 @@ except ImportError:
 
 from .linear import Linear
 
+from .fourier import FourierTransform, InverseFourierTransform
+
 from .nonlinearities import GatedNonLinearity1
 from .nonlinearities import GatedNonLinearity2
 from .nonlinearities import GatedNonLinearityUniform
@@ -43,7 +45,8 @@ from .nonlinearities import TensorProductModule
 
 from .reshuffle_module import ReshuffleModule
 
-from .pooling import NormMaxPool
+from .pooling import NormMaxPool2D, NormMaxPool
+from .pooling import NormMaxPool3D
 from .pooling import PointwiseMaxPool2D, PointwiseMaxPool
 from .pooling import PointwiseMaxPoolAntialiased2D, PointwiseMaxPoolAntialiased
 from .pooling import PointwiseMaxPool3D
@@ -90,7 +93,7 @@ __all__ = [
     "MergeModule",
     "MultipleModule",
     "Linear",
-] + _point_conv_modules + [
+    *_point_conv_modules,
     "R3Conv",
     "R2Conv",
     "R2ConvTransposed",
@@ -117,7 +120,8 @@ __all__ = [
     "QuotientFourierELU",
     "TensorProductModule",
     "ReshuffleModule",
-    "NormMaxPool",
+    "NormMaxPool2D", "NormMaxPool",
+    "NormMaxPool3D",
     "PointwiseMaxPool2D", "PointwiseMaxPool",
     "PointwiseMaxPool3D",
     "PointwiseMaxPoolAntialiased2D", "PointwiseMaxPoolAntialiased",
@@ -150,4 +154,6 @@ __all__ = [
     "IdentityModule",
     "MaskModule",
     "HarmonicPolynomialR3",
+    "FourierTransform",
+    "InverseFourierTransform",
 ]

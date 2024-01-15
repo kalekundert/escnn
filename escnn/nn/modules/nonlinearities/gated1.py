@@ -13,6 +13,7 @@ from escnn.nn import GeometricTensor
 from ..equivariant_module import EquivariantModule
 
 import torch
+import torch.nn.functional as F
 
 from torch.nn import Parameter
 
@@ -30,6 +31,7 @@ class GatedNonLinearity1(EquivariantModule):
                  in_type: FieldType,
                  gates: List = None,
                  drop_gates: bool = True,
+                 function = F.sigmoid,
                  **kwargs
                  ):
         r"""
@@ -76,6 +78,7 @@ class GatedNonLinearity1(EquivariantModule):
         self.in_type = in_type
 
         self.drop_gates = drop_gates
+        self.function = function
         
         self._contiguous = {}
         _input_indices = defaultdict(lambda: [])
@@ -205,7 +208,7 @@ class GatedNonLinearity1(EquivariantModule):
         spatial_shape = input.shape[2:]
 
         # transform the gates
-        gates = torch.sigmoid(gates - self.bias.view(1, -1, *[1]*len(spatial_shape)))
+        gates = self.function(gates - self.bias.view(1, -1, *[1]*len(spatial_shape)))
 
         # build the output tensor
         output = torch.empty(b, self.out_type.size, *spatial_shape, dtype=torch.float, device=self.bias.device)

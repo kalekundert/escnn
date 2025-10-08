@@ -158,6 +158,7 @@ class PointwiseAvgPoolAntialiased2D(_PointwiseAvgPoolAntialiasedND):
                  sigma: float,
                  stride: Union[int, Tuple[int, int]],
                  padding: Optional[Union[int, Tuple[int, int]]] = None,
+                 edge_correction: bool = False,
                  ):
         r"""
 
@@ -184,6 +185,7 @@ class PointwiseAvgPoolAntialiased2D(_PointwiseAvgPoolAntialiasedND):
             sigma=sigma,
             stride=stride,
             padding=padding,
+            edge_correction=edge_correction,
         )
 
 class PointwiseAvgPoolAntialiased3D(_PointwiseAvgPoolAntialiasedND):
@@ -193,6 +195,7 @@ class PointwiseAvgPoolAntialiased3D(_PointwiseAvgPoolAntialiasedND):
                  sigma: float,
                  stride: Union[int, Tuple[int, int, int]],
                  padding: Optional[Union[int, Tuple[int, int, int]]] = None,
+                 edge_correction: bool = False,
                  ):
         r"""
 
@@ -219,6 +222,7 @@ class PointwiseAvgPoolAntialiased3D(_PointwiseAvgPoolAntialiasedND):
             sigma=sigma,
             stride=stride,
             padding=padding,
+            edge_correction=edge_correction,
         )
         
 

@@ -103,6 +103,7 @@ class _PointwiseAvgPoolAntialiasedND(EquivariantModule):
             sigma: float,
             stride: Union[int, Tuple[int, int]],
             padding: Optional[Union[int, Tuple[int, int]]],
+            edge_correction: bool = False,
     ):
         r"""
 
@@ -142,6 +143,7 @@ class _PointwiseAvgPoolAntialiasedND(EquivariantModule):
                 stride=stride,
                 padding=padding,
                 d=d,
+                edge_correction=edge_correction,
                 channels=in_type.size,
         )
     
